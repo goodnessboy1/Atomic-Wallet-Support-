@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat App</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f2f5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+    .header {
+      background-color: #007bff;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 1.5em;
+    }
+    .auth-section, .chat-section, .share-link {
+      padding: 15px;
+    }
+    .auth-section, .share-link {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .auth-section input, .chat-section input, .share-link input {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      font-size: 1em;
+    }
+    .auth-section button, .chat-section button, .share-link button {
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      background-color: #007bff;
+      color: white;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    .auth-section button:hover, .chat-section button:hover, .share-link button:hover {
+      background-color: #0056b3;
+    }
+    .auth-section a {
+      color: #007bff;
+      text-decoration: none;
+      font-size: 0.9em;
+      text-align: center;
+    }
+    .auth-section a:hover {
+      text-decoration: underline;
+    }
+    #chatBOX {
+      height: 300px;
+      overflow-y: scroll;
+      border: 1px solid #ccc;
+      padding: 10px;
+      background-color: #fff;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin: 5px 0;
+      padding: 8px;
+      border-radius: 5px;
+      max-width: 70%;
+      word-wrap: break-word;
+    }
+    .message.admin {
+      background-color: #007bff;
+      color: white;
+      margin-left: auto;
+      text-align: right;
+    }
+    .message.user {
+      background-color: #e9ecef;
+      color: black;
+      margin-right: auto;
+    }
+    .share-link {
+      background-color: #f8f9fa;
+      text-align: center;
+    }
+    .chat-section .button-group {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .chat-section #logoutBtn {
+      background-color: #dc3545; /* Red color for logout to distinguish it */
+    }
+    .chat-section #logoutBtn:hover {
+      background-color: #c82333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">Atomic wallet Support</div>
+
+    <!-- Authentication Section -->
+    <div class="auth-section" id="authSection">
+      <input type="text" id="username" placeholder="Enter username">
+      <input type="email" id="email" placeholder="Enter email">
+      <input type="password" id="password" placeholder="Enter password">
+      <a href="#" id="forgotPassword">Forgot Password?</a>
+      <p id="authError" style="color: red; text-align: center;"></p>
+      <p id="authStatus" style="color: blue; text-align: center;"></p>
+      <button id="loginBtn">Login</button>
+      <button id="signupBtn">Sign Up</button>
+    </div>
+
+    <!-- Chat Section -->
+    <div class="chat-section" id="chatSection" style="display: none;">
+      <div id="chatBOX"></div>
+      <input type="text" id="msg_text" placeholder="Type a message">
+      <div class="button-group">
+        <button id="sendBtn">Send</button>
+        <button id="logoutBtn">Logout</button>
+      </div>
+      <p id="chatStatus" style="color: green; text-align: center; margin-top: 10px;"></p>
+    </div>
+
+    <!-- Share Link Section (for admin only) -->
+    <div class="share-link" id="shareLinkSection" style="display: none;">
+      <p>Share your chat room with someone:</p>
+      <input type="email" id="recipientEmail" placeholder="Enter recipient's email">
+      <button id="sendLinkBtn">Send Link via Email</button>
+      <p id="emailStatus"></p>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-functions-compat.js"></script>
+
+  <script>
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyAWGvhWOO_TMHf0DNzZ6Eyv4R9RglpC3Ws",
+      authDomain: "atomic-wallet-support-7dca2.firebaseapp.com",
+      databaseURL: "https://atomic-wallet-support-7dca2-default-rtdb.firebaseio.com",
+      projectId: "atomic-wallet-support-7dca2",
+      storageBucket: "atomic-wallet-support-7dca2.firebasestorage.app",
+      messagingSenderId: "937277318759",
+      appId: "1:937277318759:web:b5d3c423a596425528d6c2"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+    const auth = firebase.auth();
+    const functions = firebase.functions();
+
+    // Get the chat room ID from the URL (e.g., ?room=admin-room)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('room') || 'default-room'; // Default room if none specified
+    const adminRoomId = 'admin-room'; // Fixed room ID for the admin
+    let isAdmin = false; // Flag to determine if the user is the admin
+    let currentUsername = ''; // Store the current user's username
+
+    // Wait for DOM to load
+    document.addEventListener('DOMContentLoaded', () => {
+      const authSection = document.getElementById('authSection');
+      const chatSection = document.getElementById('chatSection');
+      const shareLinkSection = document.getElementById('shareLinkSection');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const emailStatus = document.getElementById('emailStatus');
+      const chatStatus = document.getElementById('chatStatus');
+
+      // Login Button
+      document.getElementById('loginBtn').addEventListener('click', () => {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const username = document.getElementById('username').value.trim();
+        const authError = document.getElementById('authError');
+        const authStatus = document.getElementById('authStatus');
+
+        authError.textContent = ''; // Clear previous error
+        authStatus.textContent = ''; // Clear previous status
+
+        if (!email || !password || !username) {
+          authError.textContent = "Please enter username, email, and password.";
+          console.log("Missing fields: ", { email, password, username });
+          return;
+        }
+
+        authStatus.textContent = "Logging in...";
+        console.log("Attempting to log in with email:", email);
+
+        auth.signInWithEmailAndPassword(email, password)
+          .then((userCredential) => {
+            console.log("Login successful! User ID:", userCredential.user.uid);
+            authStatus.textContent = "Login successful!";
+            authStatus.style.color = 'green';
+            currentUsername = username;
+            // Store the username in Firebase under the user's UID
+            database.ref(`users/${userCredential.user.uid}`).set({
+              username: username,
+              email: email
+            });
+          })
+          .catch((error) => {
+            console.error("Login error:", error.code, error.message, error);
+            authError.textContent = `Login failed: ${error.message} (Error Code: ${error.code})`;
+            authStatus.textContent = '';
+          });
+      });
+
+      // Sign Up Button
+      document.getElementById('signupBtn').addEventListener('click', () => {
+        const email = document.getElementById('email').value.trim();
+        const password = document.getElementById('password').value.trim();
+        const username = document.getElementById('username').value.trim();
+        const authError = document.getElementById('authError');
+        const authStatus = document.getElementById('authStatus');
+
+        authError.textContent = ''; // Clear previous error
+        authStatus.textContent = ''; // Clear previous status
+
+        if (!email || !password || !username) {
+          authError.textContent = "Please enter username, email, and password.";
+          return;
+        }
+
+        authStatus.textContent = "Signing up...";
+        console.log("Attempting to sign up with email:", email);
+
+        auth.createUserWithEmailAndPassword(email, password)
+          .then((userCredential) => {
+            console.log("Sign up successful! User ID:", userCredential.user.uid);
+            authStatus.textContent = "Sign up successful!";
+            authStatus.style.color = 'green';
+            currentUsername = username;
+            // Store the username in Firebase under the user's UID
+            database.ref(`users/${userCredential.user.uid}`).set({
+              username: username,
+              email: email
+            });
+          })
+          .catch((error) => {
+            console.error("Sign up error:", error.code, error.message, error);
+            authError.textContent = `Sign up failed: ${error.message} (Error Code: ${error.code})`;
+            authStatus.textContent = '';
+          });
+      });
+
+      // Forgot Password
+      document.getElementById('forgotPassword').addEventListener('click', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email').value.trim();
+        const authError = document.getElementById('authError');
+        const authStatus = document.getElementById('authStatus');
+
+        authError.textContent = ''; // Clear previous error
+        authStatus.textContent = ''; // Clear previous status
+
+        if (!email) {
+          authError.textContent = "Please enter your email to reset your password.";
+          return;
+        }
+
+        authStatus.textContent = "Sending password reset email...";
+        console.log("Sending password reset email to:", email);
+
+        auth.sendPasswordResetEmail(email)
+          .then(() => {
+            console.log("Password reset email sent successfully");
+            authStatus.textContent = "Password reset email sent! Check your inbox (and spam/junk folder).";
+            authStatus.style.color = 'green';
+          })
+          .catch((error) => {
+            console.error("Password reset error:", error.code, error.message, error);
+            authError.textContent = `Failed to send password reset email: ${error.message} (Error Code: ${error.code})`;
+            authStatus.textContent = '';
+          });
+      });
+
+      // Logout Button
+      document.getElementById('logoutBtn').addEventListener('click', () => {
+        auth.signOut()
+          .then(() => {
+            console.log("User logged out");
+            chatStatus.textContent = "You have been logged out.";
+            chatStatus.style.color = 'green';
+            currentUsername = '';
+          })
+          .catch((error) => {
+            console.error("Logout error:", error.message);
+            chatStatus.textContent = "Logout failed: " + error.message;
+            chatStatus.style.color = 'red';
+          });
+      });
+
+      // Monitor auth state
+      auth.onAuthStateChanged((user) => {
+        if (user) {
+          console.log("User logged in:", { email: user.email, uid: user.uid });
+          // User is logged in
+          authSection.style.display = 'none';
+          chatSection.style.display = 'block';
+
+          // Check if the user is the admin
+          isAdmin = user.email === 'westkyle873@gmail.com';
+          if (isAdmin) {
+            shareLinkSection.style.display = 'block';
+            currentUsername = 'Admin'; // Admin's display name
+          } else {
+            shareLinkSection.style.display = 'none';
+            // Fetch the username from Firebase
+            database.ref(`users/${user.uid}`).once('value', (snapshot) => {
+              const userData = snapshot.val();
+              if (userData && userData.username) {
+                currentUsername = userData.username;
+                console.log("Fetched username from database:", currentUsername);
+              }
+            });
+          }
+
+          loadMessages();
+        } else {
+          console.log("User logged out");
+          // User is logged out
+          authSection.style.display = 'flex';
+          chatSection.style.display = 'none';
+          shareLinkSection.style.display = 'none';
+          document.getElementById('chatBOX').innerHTML = '';
+          currentUsername = '';
+        }
+      });
+
+      // Send Link via Email
+      document.getElementById('sendLinkBtn').addEventListener('click', () => {
+        const recipientEmail = document.getElementById('recipientEmail').value.trim();
+
+        if (!recipientEmail) {
+          emailStatus.textContent = 'Please enter a recipient email.';
+          return;
+        }
+
+        const sendChatLink = functions.httpsCallable('sendChatLink');
+        sendChatLink({ recipientEmail, roomId: adminRoomId })
+          .then((result) => {
+            emailStatus.textContent = result.data.message;
+            emailStatus.style.color = 'green';
+          })
+          .catch((error) => {
+            emailStatus.textContent = 'Failed to send email: ' + error.message;
+            emailStatus.style.color = 'red';
+          });
+      });
+
+      // Send Message
+      document.getElementById('sendBtn').addEventListener('click', () => {
+        const msgText = document.getElementById('msg_text').value.trim();
+        const user = auth.currentUser;
+
+        if (!user) {
+          alert("Please log in to send messages.");
+          return;
+        }
+
+        if (msgText === '') {
+          alert("Please enter a message.");
+          return;
+        }
+
+        const message = {
+          userId: user.uid,
+          username: currentUsername,
+          text: msgText,
+          timestamp: firebase.database.ServerValue.TIMESTAMP
+        };
+
+        console.log("Sending message:", message, "to room:", roomId);
+        console.log("User info:", { email: user.email, uid: user.uid });
+
+        // Store messages in a specific room
+        database.ref(`rooms/${roomId}/messages`).push(message)
+          .then(() => {
+            console.log("Message sent successfully");
+            document.getElementById('msg_text').value = '';
+            chatStatus.textContent = "Message sent successfully!";
+            chatStatus.style.color = 'green';
+          })
+          .catch((error) => {
+            console.error("Error sending message:", error.message, error);
+            chatStatus.textContent = "Failed to send message: " + error.message;
+            chatStatus.style.color = 'red';
+          });
+      });
+
+      // Load Messages
+      function loadMessages() {
+        const chatBOX = document.getElementById('chatBOX');
+        chatBOX.innerHTML = '';
+
+        // Load messages from the specific room
+        database.ref(`rooms/${roomId}/messages`).orderByChild('timestamp').on('child_added', (snapshot) => {
+          const message = snapshot.val();
+          const messageElement = document.createElement('div');
+          messageElement.classList.add('message');
+
+          // Style messages differently for admin and users
+          if (message.username === 'Admin') {
+            messageElement.classList.add('admin');
+          } else {
+            messageElement.classList.add('user');
+          }
+
+          messageElement.textContent = `${message.username}: ${message.text}`;
+          chatBOX.appendChild(messageElement);
+
+          chatBOX.scrollTop = chatBOX.scrollHeight;
+        });
+      }
+    });
+  </script>
+
+</body></html>
